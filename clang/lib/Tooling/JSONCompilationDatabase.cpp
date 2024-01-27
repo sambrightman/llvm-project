@@ -224,12 +224,14 @@ JSONCompilationDatabase::loadFromBuffer(StringRef DatabaseString,
 
 std::vector<CompileCommand>
 JSONCompilationDatabase::getCompileCommands(StringRef FilePath) const {
-  SmallString<128> NativeFilePath;
-  llvm::sys::path::native(FilePath, NativeFilePath);
+  SmallString<128> RealFilePath;
+  if (llvm::sys::fs::real_path(FilePath, RealFilePath,
+                               /*expand_tilde=*/true))
+    llvm::sys::path::native(FilePath, RealFilePath);
 
   std::string Error;
   llvm::raw_string_ostream ES(Error);
-  StringRef Match = MatchTrie.findEquivalent(NativeFilePath, ES);
+  StringRef Match = MatchTrie.findEquivalent(RealFilePath, ES);
   if (Match.empty())
     return {};
   const auto CommandsRefI = IndexByFile.find(Match);
@@ -416,20 +418,27 @@ bool JSONCompilationDatabase::parse(std::string &ErrorMessage) {
     }
     SmallString<8> FileStorage;
     StringRef FileName = File->getValue(FileStorage);
-    SmallString<128> NativeFilePath;
+    SmallString<128> RealFilePath;
     if (llvm::sys::path::is_relative(FileName)) {
       SmallString<8> DirectoryStorage;
       SmallString<128> AbsolutePath(Directory->getValue(DirectoryStorage));
       llvm::sys::path::append(AbsolutePath, FileName);
-      llvm::sys::path::native(AbsolutePath, NativeFilePath);
+      if (llvm::sys::fs::real_path(AbsolutePath, RealFilePath,
+                                   /*expand_tilde=*/true)) {
+        llvm::sys::path::native(AbsolutePath, RealFilePath);
+        llvm::sys::path::remove_dots(RealFilePath, /*remove_dot_dot=*/true);
+      }
     } else {
-      llvm::sys::path::native(FileName, NativeFilePath);
+      if (llvm::sys::fs::real_path(FileName, RealFilePath,
+                                   /*expand_tilde=*/true)) {
+        llvm::sys::path::native(FileName, RealFilePath);
+        llvm::sys::path::remove_dots(RealFilePath, /*remove_dot_dot=*/true);
+      }
     }
-    llvm::sys::path::remove_dots(NativeFilePath, /*remove_dot_dot=*/true);
     auto Cmd = CompileCommandRef(Directory, File, *Command, Output);
-    IndexByFile[NativeFilePath].push_back(Cmd);
+    IndexByFile[RealFilePath].push_back(Cmd);
     AllCommands.push_back(Cmd);
-    MatchTrie.insert(NativeFilePath);
+    MatchTrie.insert(RealFilePath);
   }
   return true;
 }
