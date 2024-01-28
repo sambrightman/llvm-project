@@ -272,14 +272,18 @@ private:
   const std::string &toURIInternal(llvm::StringRef Path) {
     auto R = CachePathToURI.try_emplace(Path);
     if (R.second) {
-      llvm::SmallString<256> AbsPath = Path;
-      if (!llvm::sys::path::is_absolute(AbsPath) && !FallbackDir.empty())
-        llvm::sys::fs::make_absolute(FallbackDir, AbsPath);
-      assert(llvm::sys::path::is_absolute(AbsPath) &&
-             "If the VFS can't make paths absolute, a FallbackDir must be "
-             "provided");
-      llvm::sys::path::remove_dots(AbsPath, /*remove_dot_dot=*/true);
-      R.first->second = URI::create(AbsPath).toString();
+      llvm::SmallString<256> ResolvedPath;
+      if (llvm::sys::fs::real_path(Path, ResolvedPath,
+                                   /*expand_tilde=*/true)) {
+        ResolvedPath = Path;
+        if (!llvm::sys::path::is_absolute(ResolvedPath) && !FallbackDir.empty())
+          llvm::sys::fs::make_absolute(FallbackDir, ResolvedPath);
+        assert(llvm::sys::path::is_absolute(ResolvedPath) &&
+               "If the VFS can't make paths absolute, a FallbackDir must be "
+               "provided");
+        llvm::sys::path::remove_dots(ResolvedPath, /*remove_dot_dot=*/true);
+      }
+      R.first->second = URI::create(ResolvedPath).toString();
     }
     return R.first->second;
   }
