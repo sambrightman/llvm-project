@@ -276,9 +276,12 @@ class TUScheduler::HeaderIncluderCache {
     Association *First = nullptr, *Prev = nullptr;
     for (const std::string &Header : Headers) {
       auto &Assoc = HeaderToMain[Header];
-      if (Assoc.Next)
+      if (Assoc.Next) {
+        log("Header {0} already associated with MainFile {1}", Header, Assoc.MainFile);
         continue; // Already has a valid association.
+      }
 
+      log("Associating Header {0} with MainFile {1}", Header, MainFile);
       Assoc.MainFile = MainFile;
       Assoc.Next = Prev;
       Prev = &Assoc;
